@@ -1,0 +1,98 @@
+---
+title: "CorrelationDesmoRegression"
+author: "Natalie Geyer"
+date: '`r Sys.Date()`'
+output: 
+    html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import packages
+```{r}
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(knitr)
+library(report)
+library(dplyr)
+library(ggpubr)
+```
+
+Define input directories
+```{r, include=FALSE}
+# Import directory for growth pattern annotation by tumor
+KSTumorFn <- "./output/gp_annotations_by_tumor.csv" 
+# Import directory for regression data by tumor
+RegrTumorFn <- "./output/regression_by_tumor.csv"
+
+# Import directory for entire dataframe (sorted by Probe)
+clinPatAnnotFn <- "./output/clin_data_annot.csv"
+```
+
+Import data
+```{r, include=FALSE}
+clinPatAnnotData <- read.csv(clinPatAnnotFn)
+head(clinPatAnnotData)
+
+KSTumorData <- read.csv(KSTumorFn)
+head(KSTumorData)
+RegrTumorData <- read.csv(RegrTumorFn)
+head(RegrTumorData)
+```
+
+Re-organize input data (by tumor)
+```{r, include=FALSE}
+NeoData <- clinPatAnnotData %>% select(id, neoadjuvant) %>% rename(ids = "id")
+
+head(KSTumorData)
+table(KSTumorData$annotation_types)
+
+# data subsetting 
+KSTumorData <- subset(KSTumorData, annotation_types == "D") %>% select(-annotation_types, -length_um) %>% rename(desmo_percent = "percent_gp")
+
+# rename 
+RegrTumorData <- RegrTumorData %>% rename(tum_percent_annot = "avg_percent")
+
+# merge regression and growth pattern annotation datasets
+KSRegrTumorData <- merge(KSTumorData, RegrTumorData)
+
+# merge with clinical data
+difference <- KSRegrTumorData$ids[!(KSRegrTumorData$ids %in% NeoData$ids)]
+print("IDs that differ between tumor regression/growth pattern and clinical dataframe.")
+print(difference)
+KSRegrTumorData <- merge(KSRegrTumorData, NeoData)
+```
+
+## Visualizations "per Probe"
+
+```{r warning=FALSE}
+# Visualize scatter desmo% tumor_percent_annot per probe
+
+ScatterDesmoRegression <- ggplot(clinPatAnnotData, aes(x = tum_percent_annot, y = desmo_percent)) + geom_point() + theme_classic() + ggtitle("All, per probe", subtitle = "least squares regression with confidence interval") + geom_smooth(method=lm, col="black")
+ggExtra::ggMarginal(ScatterDesmoRegression, type = "histogram", size = 3, xparams = list(bins = 100, fill = "blue"), yparams = list(bins = 100, fill = "orange"))
+
+# Check neoadjuvant state
+table(clinPatAnnotData$neoadjuvant)
+```
+
+Plot with correlation analysis (Spearman correlation coefficient), per Probe 
+```{r warning=FALSE}
+ggscatter(subset(clinPatAnnotData, neoadjuvant=="Yes"), x = "tum_percent_annot", y = "desmo_percent", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "spearman", cor.coef.coord = c(0, 106),
+          xlab = "% tumor regression", ylab = "% desmoplastic", 
+          title = "neoadjuvant, per probe", subtitle = "Spearman correlation coefficient")
+
+ggscatter(subset(clinPatAnnotData, neoadjuvant=="No"), x = "tum_percent_annot", y = "desmo_percent", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "spearman", cor.coef.coord = c(0, 106),
+          xlab = "% tumor regression", ylab = "% desmoplastic", 
+          title = "chemonaive, per probe", subtitle = "Spearman correlation coefficient")
+```
+
+```{r}
+cite_packages()
+```
