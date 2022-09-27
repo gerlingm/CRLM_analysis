@@ -1,0 +1,561 @@
+---
+title: "Visual vs annotation-based growth pattern scoring_review"
+author: "Natalie Geyer"
+date: '`r Sys.Date()`'
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=5, fig.height=6) 
+```
+
+Generated on: `r Sys.time()`
+
+Import packages
+```{r}
+#Test commit changes 2022-04-19
+library(readxl)
+library(tidyverse)
+library(irr)
+library(ggExtra)
+library(ggplot2)
+library(knitr)
+library(report)
+library(dplyr)
+library(survival)
+library(survminer)
+library(htmlwidgets)
+library(webshot)
+webshot::install_phantomjs()
+library(networkD3)
+```
+
+```{r}
+DanyilEstFn <- "./input/Data visual scorings/HGP_scores_Danyil.xlsx" # Only 59-104
+EvelinaEstFn <- "./input/Data visual scorings/Template_and_example_HGP_scoresEVELINA.xlsx" # Only 1-58
+KSSlideFn <- "./output/gp_annotations_by_slide.csv" 
+
+clinPatAnnotFn <- "./output/clin_data_annot.csv"
+```
+
+Define color palette 
+```{r}
+myColors_VisualvsAnnotation <- c("#f46d43", "#74add1") 
+```
+
+Import and initialize annotation-based ("KS") scoring data
+```{r}
+# Obtain KS data in tabulated form
+KSSlideDataTab <- read.csv(KSSlideFn, row.names=NULL)
+KSSlideDataTab <- KSSlideDataTab %>% mutate(slide_name = paste(ids, tumors, blocks, sep="-")) %>% relocate(slide_name)
+KSSlideDataTab$slide_name <- as.factor(KSSlideDataTab$slide_name)
+head(KSSlideDataTab)
+
+# Recode GP names and R2 to R
+KSSlideDataLong <- KSSlideDataTab %>% select(-tumors, -blocks)
+KSSlideDataLong <- KSSlideDataLong %>% mutate(annotation_types = recode(annotation_types, R2 = "R"))
+KSSlideDataLong <- KSSlideDataLong %>% mutate(annotation_types = recode(annotation_types, D = "desmo"))
+KSSlideDataLong <- KSSlideDataLong %>% mutate(annotation_types = recode(annotation_types, R = "replacement"))
+KSSlideDataLong <- KSSlideDataLong %>% mutate(annotation_types = recode(annotation_types, P = "pushing"))
+
+# Initialize % of each GP for every slide, so we can compare all and avoid lack of scoring for some slides
+for(an_slid in unique(KSSlideDataLong$slide_name)) {
+  an_id <- as.integer(unlist(strsplit(an_slid, "-"))[1])
+  KSSlideDataLong <- KSSlideDataLong %>% add_row(slide_name = an_slid, ids = an_id, annotation_types = factor("desmo"), percent_gp = 0, length_um = 0)
+  KSSlideDataLong <- KSSlideDataLong %>% add_row(slide_name = an_slid, ids = an_id, annotation_types = factor("replacement"), percent_gp = 0, length_um = 0)
+  KSSlideDataLong <- KSSlideDataLong %>% add_row(slide_name = an_slid, ids = an_id, annotation_types = factor("pushing"), percent_gp = 0, length_um = 0)
+}
+
+# Summarize again (sum up) GP values
+KSSlideDataLong <- KSSlideDataLong %>% group_by(ids, slide_name, annotation_types) %>% summarize(percent_gp = sum(percent_gp), length_um = sum(length_um))
+dim(KSSlideDataLong)
+length(unique(KSSlideDataLong$slide_name))
+head(KSSlideDataLong)
+
+# KS slide data
+KSSlideGPDataLong <- KSSlideDataLong %>% mutate(slide_name = paste0(slide_name, '-', annotation_types)) %>% ungroup() %>% select(-ids, -annotation_types, -length_um) %>% rename(percent_gp_KS = "percent_gp")
+dim(KSSlideGPDataLong)
+length(unique(KSSlideGPDataLong$slide_name))/3
+head(KSSlideGPDataLong)
+
+# Transfor KS data to longer format to match ...EstSlideDataWide
+KSSlideDataWide <- KSSlideDataLong %>% pivot_wider(id_cols = slide_name, names_from = annotation_types, values_from = percent_gp, values_fill = list(percent_gp = 0))
+head(KSSlideDataWide)
+```
+
+
+Import and initialize visual ("ED") scoring data
+```{r}
+# Obtain visual ("ED") data and remove empty rows
+
+EvelinaEstSlideDataWide <- read_excel(EvelinaEstFn, col_types = c("text", rep("numeric", 3), rep("skip",4)))
+EvelinaEstSlideDataWide <- rename(EvelinaEstSlideDataWide, slide_name = "Code", desmo = "D", replacement = "R", pushing = "P")
+EvelinaEstSlideDataWide <- EvelinaEstSlideDataWide[!is.na(EvelinaEstSlideDataWide$desmo),]
+EvelinaEstSlideDataWide <- EvelinaEstSlideDataWide[!with(EvelinaEstSlideDataWide,is.na(EvelinaEstSlideDataWide$desmo) & is.na(EvelinaEstSlideDataWide$replacement) & is.na(EvelinaEstSlideDataWide$pushing)),] # remove empty rows
+head(EvelinaEstSlideDataWide)
+
+DanyilEstSlideDataWide <- read_excel(DanyilEstFn, col_types = c("text", rep("numeric", 3), rep("skip",4)))
+DanyilEstSlideDataWide <- rename(DanyilEstSlideDataWide, slide_name = "Code", desmo = "D", replacement = "R", pushing = "P")
+DanyilEstSlideDataWide <- DanyilEstSlideDataWide[!with(DanyilEstSlideDataWide,is.na(DanyilEstSlideDataWide$desmo) & is.na(DanyilEstSlideDataWide$replacement) & is.na(DanyilEstSlideDataWide$pushing)),] # remove empty rows
+head(DanyilEstSlideDataWide)
+
+# Combine 
+
+EDEstSlideDataWide <- rbind(EvelinaEstSlideDataWide, DanyilEstSlideDataWide)
+head(EDEstSlideDataWide)
+
+# Pivot to long format
+
+EDEstSlideDataLong <- EDEstSlideDataWide %>% pivot_longer(-slide_name, names_to = "annotation_types", values_to = "percent_gp")
+EDEstSlideDataLong <- EDEstSlideDataLong %>% mutate(slide_name = paste0(slide_name, '-', annotation_types)) %>% select(-annotation_types) %>% rename(percent_gp_EvelinaDanyil = "percent_gp")
+dim(EDEstSlideDataLong)
+length(unique(EDEstSlideDataLong$slide_name))/3
+head(EDEstSlideDataLong)
+```
+
+
+Merged KS-ED scores for every slide and GP
+```{r}
+# Merge scores
+KSEDSlideGPDataLong <- merge(KSSlideGPDataLong, EDEstSlideDataLong)
+dim(KSEDSlideGPDataLong)
+length(unique(KSEDSlideGPDataLong$slide_name))/3
+head(KSEDSlideGPDataLong)
+
+# QA: Check for discrepancies in scored slides
+QAKSEDSlideGPDataLong <- merge(KSSlideGPDataLong, EDEstSlideDataLong, all = T)
+dim(QAKSEDSlideGPDataLong)
+length(unique(QAKSEDSlideGPDataLong$slide_name))/3
+#  probes with nas
+unique(QAKSEDSlideGPDataLong %>% filter(is.na(percent_gp_EvelinaDanyil) & is.na(percent_gp_KS)) %>% pull(slide_name))
+unique(QAKSEDSlideGPDataLong %>% filter(is.na(percent_gp_EvelinaDanyil) & !is.na(percent_gp_KS)) %>% pull(slide_name))
+unique(QAKSEDSlideGPDataLong %>% filter(!is.na(percent_gp_EvelinaDanyil) & is.na(percent_gp_KS)) %>% pull(slide_name))
+```
+
+Visualization visual ("ED") vs Annotation-based ("KS") scoring and save as pdf output
+```{r}
+ScatterKSED <- ggplot(KSEDSlideGPDataLong, aes(x = percent_gp_EvelinaDanyil, y = percent_gp_KS)) + geom_point() + theme_classic()
+ggExtra::ggMarginal(ScatterKSED, type = "histogram", size = 5, xparams = list(bins = 50, fill = "#f46d43"), yparams = list(bins = 50, fill = "#74add1"))
+
+#Create longer pivot for histogram plotting and rename
+KSEDSlideGPDataLongLonger <- KSEDSlideGPDataLong %>%    
+  
+  pivot_longer(
+    cols = -slide_name,                       # pivot all columns except case_id (all the symptoms columns)
+    names_to = "annotation_type",             # assign name for new column that holds the symptoms
+    values_to = "percent_gp") #%>%  # assign name for new column that holds the values (yes/no)
+  
+  #mutate(percent_gp = replace_na(percent_gp, "unknown")) # convert NA to "unknown"
+head(KSEDSlideGPDataLongLonger)
+KSEDSlideGPDataLongLonger$percent_gp<- as.numeric(as.character(KSEDSlideGPDataLongLonger$percent_gp))
+
+ggplot(data = KSEDSlideGPDataLongLonger, mapping = aes(x = percent_gp, fill = annotation_type)) +
+  geom_histogram(bins = 100, position = "dodge") +
+  scale_y_sqrt() + #sqrt adjustment of y Axis
+  labs(title = "Frequency distribution") + 
+  geom_hline(yintercept=0, linetype = 2, color = "darkgray") +  
+  theme_bw() +
+  scale_fill_manual(values=c("#f46d43", "#74add1"))
+```
+
+Probe categorization KS - annotation-based scoring
+```{r}
+# Average GP %s for probes
+KSProbeDataLong <- KSSlideDataLong %>% group_by(ids, annotation_types) %>% summarise(percent_gp = round(mean(percent_gp),2))
+head(KSProbeDataLong)
+
+# Categorize by GP predo
+KSProbePredo <- KSProbeDataLong %>% group_by(ids) %>% slice_max(percent_gp) %>% select(ids, annotation_types) %>% rename(gp_predo = "annotation_types")
+head(KSProbePredo)
+
+# Filter out desmo values
+KSProbeDesmo <- KSProbeDataLong %>% filter(annotation_types == "desmo")
+
+# Categorize by 100 % desmo
+KSProbeDesmo <- KSProbeDesmo %>% ungroup() %>% mutate(desmo_100 = cut(KSProbeDesmo$percent_gp, breaks = c(0, 99.9, 100), include.lowest = TRUE))
+
+# Categorize by 95 % desmo
+KSProbeDesmo <- KSProbeDesmo %>% ungroup() %>% mutate(desmo_95 = cut(KSProbeDesmo$percent_gp, breaks = c(0, 94.9, 100), include.lowest = TRUE))
+head(KSProbeDesmo)
+
+# Categorize by 0-50, 50-100 and 100 % desmo
+KSProbeDesmo <- KSProbeDesmo %>% ungroup() %>% mutate(desmo_5099 = cut(KSProbeDesmo$percent_gp, breaks = c(0, 50, 99.9, 100), include.lowest = TRUE))
+head(KSProbeDesmo)
+
+# Categorize by increments desmo
+KSProbeDesmo <- KSProbeDesmo %>% ungroup() %>% mutate(desmo_3399 = cut(KSProbeDesmo$percent_gp, breaks = c(0, 33, 99.9, 100), include.lowest = TRUE))
+head(KSProbeDesmo)
+
+# Categorize replacement 
+KSProbeRepl <- KSProbeDataLong %>% filter(annotation_types == "replacement") 
+KSProbeRepl <- KSProbeRepl %>% mutate(replacement_group_KS = ifelse(percent_gp >=50, "50+", ifelse(percent_gp >0, "1-50", "0")))
+KSProbeRepl <- KSProbeRepl %>% select(ids, percent_gp, replacement_group_KS) %>% rename(replacement_KS = "percent_gp")
+table(KSProbeRepl$replacement_group_KS)
+
+# Merge into dataset of probe ids and GP category groups
+KSProbeCat <- merge(KSProbePredo, select(KSProbeDesmo, ids, desmo_100, desmo_95, desmo_3399, desmo_5099))
+head(KSProbeCat)
+
+KSProbeCat <- merge(KSProbeCat, KSProbeRepl, by = "ids")
+head(KSProbeCat)
+```
+
+Probe categorization visual ("ED") scoring
+```{r}
+# Summarise calculates the mean of each slide per ID, so that we have the predominant growth pattern per patient afterwards
+EDProbeData <- EDEstSlideDataLong %>% separate(slide_name, into = c("ids", "tumors", "blocks", "annotation_types"), sep = "-") %>% select(ids, annotation_types, percent_gp_EvelinaDanyil) %>% group_by(ids, annotation_types) %>% summarise(percent_gp_EvelinaDanyil = round(mean(percent_gp_EvelinaDanyil),2))
+head(EDProbeData)
+
+#check that each ID has 3 values
+table(EDProbeData$ids)
+table(table(EDProbeData$ids))
+
+# Categorize by GP predo
+EDProbePredo <- EDProbeData %>% group_by(ids) %>% slice_max(percent_gp_EvelinaDanyil) %>% select(ids, annotation_types) %>% rename(gp_predo = "annotation_types")
+head(EDProbePredo)
+
+#check that each ID has 1 value left
+table(EDProbePredo$ids)
+table(table(EDProbePredo$ids))
+
+#Remove slides from ID 6, 22 and 39 because they were annotated with 50% growth pattern, a predominant growth pattern cannot be defined
+EDProbePredo <- EDProbePredo[!(EDProbePredo$ids=="6" | EDProbePredo$ids=="22" | EDProbePredo$ids=="39"),]
+table(EDProbePredo$ids)
+table(table(EDProbePredo$ids))
+
+# Check that there are no probes with null % gps Evelina/Danyil
+unique(EDProbeData %>% filter(is.na(percent_gp_EvelinaDanyil)) %>% pull(ids))
+
+# Filter out desmo values
+EDProbeDesmo <- EDProbeData %>% filter(annotation_types == "desmo")
+
+# Categorize by 100 % desmo
+EDProbeDesmo <- EDProbeDesmo %>% ungroup() %>% mutate(desmo_100 = cut(EDProbeDesmo$percent_gp_EvelinaDanyil, breaks = c(0, 99.9, 100), include.lowest = TRUE))
+
+# Categorize by 95 % desmo
+EDProbeDesmo <- EDProbeDesmo %>% ungroup() %>% mutate(desmo_95 = cut(EDProbeDesmo$percent_gp_EvelinaDanyil, breaks = c(0, 94.9, 100), include.lowest = TRUE))
+head(EDProbeDesmo)
+
+# Categorize by 0-50, 50-100 and 100 % desmo
+EDProbeDesmo <- EDProbeDesmo %>% ungroup() %>% mutate(desmo_5099 = cut(EDProbeDesmo$percent_gp_EvelinaDanyil, breaks = c(0, 50, 99.9, 100), include.lowest = TRUE))
+head(EDProbeDesmo)
+
+# Categorize by increments desmo
+EDProbeDesmo <- EDProbeDesmo %>% ungroup() %>% mutate(desmo_3399 = cut(EDProbeDesmo$percent_gp_EvelinaDanyil, breaks = c(0, 33, 99.9, 100), include.lowest = TRUE))
+head(EDProbeDesmo)
+
+# Categorize replacement 
+EDProbeRepl <- EDProbeData %>% filter(annotation_types == "replacement") 
+EDProbeRepl <- EDProbeRepl %>% mutate(replacement_group_ED = ifelse(percent_gp_EvelinaDanyil >=50, "50+", ifelse(percent_gp_EvelinaDanyil >0, "1-50", "0")))
+EDProbeRepl <- EDProbeRepl %>% select(ids, percent_gp_EvelinaDanyil, replacement_group_ED) %>% rename(replacement_ED = "percent_gp_EvelinaDanyil")
+table(EDProbeRepl$replacement_group_ED)
+
+# Merge into dataset of probe ids and GP category groups
+EDProbeCat.withPredo <- merge(EDProbePredo, select(EDProbeDesmo, ids, desmo_100, desmo_95, desmo_3399, desmo_5099))
+table(table(EDProbeCat.withPredo$ids)) #should only contain unique ids, no doublications
+
+EDProbeCat.withPredo <- merge(EDProbeCat.withPredo, EDProbeRepl, by = "ids")
+head(EDProbeCat.withPredo)
+
+EDProbeCat.withoutPredo <- merge(select(EDProbeDesmo, ids, desmo_100, desmo_95, desmo_3399, desmo_5099), EDProbeRepl, by = "ids")
+table(table(EDProbeCat.withoutPredo$ids)) #should only contain unique ids, no doublications
+table(table(EDProbeCat.withPredo$ids)) #should only contain unique ids, no doublications
+
+```
+
+
+Cohen's Kappa visual ("ED") scoring versus annotation-based ("KS") scoring
+```{r}
+# GP predo, Id 11 is not merged - does not exist in the KS dataset
+KSEDPredo <- merge(KSProbeCat %>% select(ids, gp_predo) %>% rename(gp_predo_KS = "gp_predo"), EDProbeCat.withPredo %>% select(ids, gp_predo) %>% rename(gp_predo_EvelinaDanyil = "gp_predo"))
+head(KSEDPredo)
+table(table(KSEDPredo$ids))
+
+kappa2(select(KSEDPredo, gp_predo_KS, gp_predo_EvelinaDanyil))
+
+# desmo 100
+KSEDDesmo100 <- merge(KSProbeCat %>% select(ids, desmo_100) %>% rename(desmo_100_KS = "desmo_100"), EDProbeCat.withoutPredo %>% select(ids, desmo_100) %>% rename(desmo_100_ED = "desmo_100"))
+head(KSEDDesmo100)
+table(table(KSEDDesmo100$ids))
+kappa2(select(KSEDDesmo100, desmo_100_KS, desmo_100_ED))
+
+# desmo 95
+KSEDDesmo95 <- merge(KSProbeCat %>% select(ids, desmo_95) %>% rename(desmo_95_KS = "desmo_95"), EDProbeCat.withoutPredo %>% select(ids, desmo_95) %>% rename(desmo_95_ED = "desmo_95"))
+head(KSEDDesmo95)
+table(table(KSEDDesmo95$ids))
+kappa2(select(KSEDDesmo95, desmo_95_KS, desmo_95_ED))
+
+# desmo 3399
+KSEDDesmo3399 <- merge(KSProbeCat %>% select(ids, desmo_3399) %>% rename(desmo_3399_KS = "desmo_3399"), EDProbeCat.withoutPredo %>% select(ids, desmo_3399) %>% rename(desmo_3399_ED = "desmo_3399"))
+head(KSEDDesmo3399)
+table(table(KSEDDesmo3399$ids))
+kappa2(select(KSEDDesmo3399, desmo_3399_KS, desmo_3399_ED))
+
+# desmo 5099 (0-50, 50-99.9, 100 %)
+KSEDDesmo5099 <- merge(KSProbeCat %>% select(ids, desmo_5099) %>% rename(desmo_5099_KS = "desmo_5099"), EDProbeCat.withoutPredo %>% select(ids, desmo_5099) %>% rename(desmo_5099_ED = "desmo_5099"))
+head(KSEDDesmo5099)
+table(table(KSEDDesmo5099$ids))
+kappa2(select(KSEDDesmo5099, desmo_5099_KS, desmo_5099_ED))
+
+# replacement 0, 1-50, 50+
+KSEDRepl50 <- merge(KSProbeCat %>% select(ids, replacement_group_KS), EDProbeCat.withoutPredo %>% select(ids, replacement_group_ED))
+head(KSEDRepl50)
+table(table(KSEDRepl50$ids))
+kappa2(select(KSEDRepl50, replacement_group_KS, replacement_group_ED))
+
+```
+
+Build-up Sankey diagram for predominant growth pattern
+```{r}
+#Making a sankey diagram to show differences between the manual ("ED") scoring by Evelina&Danyil and the whole slide annotation based scoring ("KS")
+
+ncol(KSEDPredo$gp_predo_KS == "desmo")
+
+#Desmo & Desmo
+nrow(subset(KSEDPredo, gp_predo_KS =="desmo" & gp_predo_EvelinaDanyil =="desmo"))
+
+#Desmo & Replacement
+nrow(subset(KSEDPredo, gp_predo_KS =="desmo" & gp_predo_EvelinaDanyil =="replacement"))
+
+#Replacement & Desmo
+nrow(subset(KSEDPredo, gp_predo_KS =="replacement" & gp_predo_EvelinaDanyil =="desmo"))
+
+#Replacement & Replacement
+nrow(subset(KSEDPredo, gp_predo_KS =="replacement" & gp_predo_EvelinaDanyil =="replacement"))
+
+#pushing & pushing
+nrow(subset(KSEDPredo, gp_predo_KS =="pushing" & gp_predo_EvelinaDanyil =="pushing"))
+
+#Desmo & pushing
+nrow(subset(KSEDPredo, gp_predo_KS =="desmo" & gp_predo_EvelinaDanyil =="pushing"))
+
+#Replacement & pushing
+nrow(subset(KSEDPredo, gp_predo_KS =="replacement" & gp_predo_EvelinaDanyil =="pushing"))
+
+#pushing & Desmo
+nrow(subset(KSEDPredo, gp_predo_KS =="pushing" & gp_predo_EvelinaDanyil =="desmo"))
+
+#pushing & Replacement 
+nrow(subset(KSEDPredo, gp_predo_KS =="pushing" & gp_predo_EvelinaDanyil =="replacement"))
+
+
+
+#Making of a sankey plot.
+
+links <- data.frame(
+  source=c("desmoED","replacementED", "pushingED", "desmoED","replacementED", "desmoED", "pushingED"), 
+  target=c("desmoKS","desmoKS", "desmoKS", "replacementKS", "replacementKS", "pushingKS", "pushingKS"), 
+  value=c(nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="desmo" & gp_predo_KS =="desmo")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="replacement" & gp_predo_KS =="desmo")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="pushing" & gp_predo_KS =="desmo")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="desmo" & gp_predo_KS =="replacement")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="replacement" & gp_predo_KS =="replacement")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="desmo" & gp_predo_KS =="pushing")), 
+          nrow(subset(KSEDPredo, gp_predo_EvelinaDanyil =="pushing" & gp_predo_KS =="pushing"))
+          )
+)
+
+nodes <- data.frame(
+  name=c(as.character(links$source), 
+         as.character(links$target)) %>% unique()
+)
+
+# With networkD3, connection must be provided using id, not using real name like in the links dataframe
+links$IDsource <- match(links$source, nodes$name)-1 
+links$IDtarget <- match(links$target, nodes$name)-1
+
+# Define colours
+my_color_Sankey1 <- 'd3.scaleOrdinal() .domain(["desmoED","replacementED", "pushingED", "desmoKS", "replacementKS", "pushingKS"]) .range(["#313695", "#d73027" , "#fdae61", "#313695", "#d73027" , "#fdae61"])'
+
+# Make the Network
+My.sankeyPlot <- sankeyNetwork(Links = links, Nodes = nodes,
+                   Source = "IDsource", Target = "IDtarget",
+                   Value = "value", NodeID = "name", 
+                   sinksRight=FALSE,
+                   fontSize = 15, nodeWidth = 35, colourScale=my_color_Sankey1
+                   )
+My.sankeyPlot
+
+# save the html widget
+saveWidget(My.sankeyPlot, file=paste0( getwd(), "/plots/sankey_VisualVsAnnotation.html"))
+webshot(url = paste0( getwd(), "/plots/sankey_VisualVsAnnotation.html"),
+        file = paste0( getwd(), "/plots/sankey_VisualVsAnnotation.pdf"))
+
+```
+
+Build-up Sankey diagram for desmo categories 0-33, 33-99, 99.9-100%
+```{r}
+#Making a sankey diagram to show differences between the manual ("ED") scoring and the whole slide annotation based scoring ("KS")
+
+#KSEDDesmo3399.crt <- KSEDDesmo3399 
+#KSEDDesmo3399.crt$desmo_3399_KS <- as.character(KSEDDesmo3399.crt$desmo_3399_KS)
+#KSEDDesmo3399.crt$desmo_3399_ED <- as.character(KSEDDesmo3399.crt$desmo_3399_ED)
+
+NROW(KSEDDesmo3399$desmo_3399_KS)
+
+#[0,33] & [0,33]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "[0,33]" & desmo_3399_ED == "[0,33]"))
+
+#[0,33] & (33,99.9]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "[0,33]" & desmo_3399_ED == "(33,99.9]"))
+
+#[0,33] & (99.9,100]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "[0,33]" & desmo_3399_ED == "(99.9,100]"))
+
+#(33,99.9] & [0,33]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(33,99.9]" & desmo_3399_ED == "[0,33]"))
+
+#(33,99.9] & (33,99.9]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(33,99.9]" & desmo_3399_ED == "(33,99.9]"))
+
+#(33,99.9] & (99.9,100]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(33,99.9]" & desmo_3399_ED == "(99.9,100]"))
+
+#(99.9,100] & [0,33]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(99.9,100]" & desmo_3399_ED == "[0,33]"))
+
+#(99.9,100] & (33,99.9]
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(99.9,100]" & desmo_3399_ED == "(33,99.9]"))
+
+#(99.9,100] & (99.9,100] 
+NROW(subset(KSEDDesmo3399, desmo_3399_KS == "(99.9,100]" & desmo_3399_ED == "(99.9,100]"))
+
+#Making of a sankey plot. 
+
+links_desmo3399 <- data.frame(
+  source=c("[0,33]ED","(33,99.9]ED", "[0,33]ED", "(33,99.9]ED","(99.9,100]ED", "(33,99.9]ED", "(99.9,100]ED"), 
+  target=c("[0,33]KS","[0,33]KS", "(33,99.9]KS", "(33,99.9]KS", "(33,99.9]KS", "(99.9,100]KS", "(99.9,100]KS"), 
+  value=c(NROW(subset(KSEDDesmo3399, desmo_3399_ED == "[0,33]" & desmo_3399_KS == "[0,33]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "(33,99.9]" & desmo_3399_KS == "[0,33]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "[0,33]" & desmo_3399_KS == "(33,99.9]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "(33,99.9]" & desmo_3399_KS == "(33,99.9]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "(99.9,100]" & desmo_3399_KS == "(33,99.9]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "(33,99.9]" & desmo_3399_KS == "(99.9,100]")), 
+          NROW(subset(KSEDDesmo3399, desmo_3399_ED == "(99.9,100]" & desmo_3399_KS == "(99.9,100]"))
+          )
+)
+
+nodes_desmo3399 <- data.frame(
+  name=c(as.character(links_desmo3399$source), 
+         as.character(links_desmo3399$target)) %>% unique()
+)
+
+# With networkD3, connection must be provided using id, not using real name like in the links dataframe.. So we need to reformat it.
+links_desmo3399$IDsource <- match(links_desmo3399$source, nodes_desmo3399$name)-1 
+links_desmo3399$IDtarget <- match(links_desmo3399$target, nodes_desmo3399$name)-1
+
+# Define colours
+my_color_Sankey2 <- 'd3.scaleOrdinal() .domain(["[0,33]ED", "(33,99.9]ED", "(99.9,100]ED", "[0,33]KS", "(33,99.9]KS", "(99.9,100]KS"]) .range(["#abd9e9", "#74add1" , "#313695", "#abd9e9", "#74add1" , "#313695"])'
+
+# Make the Network
+My.sankeyPlot_desmo3399 <- sankeyNetwork(Links = links_desmo3399, Nodes = nodes_desmo3399,
+                   Source = "IDsource", Target = "IDtarget",
+                   Value = "value", NodeID = "name", 
+                   sinksRight=FALSE,
+                   fontSize = 15, nodeWidth = 35, colourScale = my_color_Sankey2
+                   )
+My.sankeyPlot_desmo3399
+
+# save the html widget
+saveWidget(My.sankeyPlot_desmo3399, file=paste0( getwd(), "/plots/sankey_VisualVsAnnotation_desmo3399.html"))
+webshot(url = paste0( getwd(), "/plots/sankey_VisualVsAnnotation_desmo3399.html"),
+        file = paste0( getwd(), "/plots/sankey_VisualVsAnnotation_desmo3399.pdf"))
+
+```
+
+Load clinical data for Survival Plots
+```{r}
+clinPatAnnotData.vis <- read.csv(clinPatAnnotFn)
+
+KSEDPredo <- KSEDPredo %>% rename(id = ids) %>% rename(gp_predo_ED = gp_predo_EvelinaDanyil)
+KSEDDesmo3399 <- KSEDDesmo3399 %>% rename(id = ids)
+KSEDDesmo5099 <- KSEDDesmo5099 %>% rename(id = ids)
+KSEDRepl50 <- KSEDRepl50 %>% rename(id = ids)
+clinPatAnnotData.vis.withPredo <- merge(clinPatAnnotData.vis, KSEDPredo, by = "id")
+clinPatAnnotData.vis.withoutPredo <- merge(clinPatAnnotData.vis, KSEDDesmo3399, by = "id")
+clinPatAnnotData.vis.withoutPredo <- merge(clinPatAnnotData.vis.withoutPredo, KSEDDesmo5099, by = "id")
+clinPatAnnotData.vis.withoutPredo <- merge(clinPatAnnotData.vis.withoutPredo, KSEDRepl50, by = "id")
+```
+
+Survival function 
+```{r}
+plotSurv <- function(grouping, fun_data, surv_type, do_facet, col_palette, cohort_type = "All") {
+  
+params <- list(grouping = substitute(grouping), fun_data = substitute(fun_data))
+
+if(surv_type == "OS") {
+  expr <- substitute(survfit(Surv(time = time_fu_os, event = status_fu_os,) ~ grouping, data = fun_data), params)
+} else if(surv_type == "Liver PFS") {
+  expr <- substitute(survfit(Surv(time = time_fu_prog, event = status_fu_prog,) ~ grouping, data = fun_data), params)
+}
+fit_object <- eval.parent(expr)
+print(fit_object)
+
+# All  
+p <- ggsurvplot(fit_object, data = fun_data, 
+    title = paste(surv_type, "- ", cohort_type),
+    xlab = "Years", 
+    ylab = "Survival probability",
+    pval = TRUE, 
+    risk.table = TRUE,
+    risk.table.y.text = FALSE, 
+    risk.table.height = 0.25,#0.3, 
+    palette = col_palette, #c("#313695", "#fdae61", "#d73027"),
+    xscale = 365.25, # converts days->years at xscale
+    break.time.by=365.25) # sets the axis breaks to one year
+print(p)
+
+# Neoadjuvant vs Chemonaïve
+if(do_facet) {
+  p <- ggsurvplot_facet(fit_object, data = fun_data, 
+      title = surv_type,
+      xlab = "Years", 
+      ylab = "Survival probability",
+      pval = TRUE, 
+      facet.by = "neoadjuvant", 
+      palette = col_palette, #c("#d73027", "#313695",  "#fdae61"),
+      xscale = 365.25, 
+      break.time.by=365.25)  
+  print(p)
+ }
+}
+```
+
+Survival plots
+```{r, echo=FALSE, out.width="25%"}
+# Predominant growth pattern KS (annotation-based) versus ED (visual) scoring
+plotSurv(gp_predo_KS, clinPatAnnotData.vis.withPredo, "OS", FALSE, col_palette = c("#313695", "#fdae61", "#d73027"))
+plotSurv(gp_predo_ED, clinPatAnnotData.vis.withPredo, "OS", FALSE, col_palette = c("#313695", "#fdae61", "#d73027"))
+
+# Desmo categories KS (annotation-based) versus ED (visual) scoring
+plotSurv(desmo_3399_KS, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_3399_ED, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#abd9e9", "#74add1", "#313695"))
+
+plotSurv(desmo_3399_KS, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "Yes"), "OS", FALSE, "Neoadjuvant", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_3399_KS, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "No"), "OS", FALSE, "Chemonaïve", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_3399_ED, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "Yes"), "OS", FALSE, "Neoadjuvant", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_3399_ED, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "No"), "OS", FALSE, "Chemonaïve", col_palette = c("#abd9e9", "#74add1", "#313695"))
+
+# 0-50, 50-99.9, 100 % Desmo categories KS (annotation-based) versus ED (visual) scoring
+plotSurv(desmo_5099_KS, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_5099_ED, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#abd9e9", "#74add1", "#313695"))
+
+plotSurv(desmo_5099_KS, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "Yes"), "OS", FALSE, "Neoadjuvant", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_5099_KS, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "No"), "OS", FALSE, "Chemonaïve", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_5099_ED, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "Yes"), "OS", FALSE, "Neoadjuvant", col_palette = c("#abd9e9", "#74add1", "#313695"))
+plotSurv(desmo_5099_ED, filter(clinPatAnnotData.vis.withoutPredo, neoadjuvant == "No"), "OS", FALSE, "Chemonaïve", col_palette = c("#abd9e9", "#74add1", "#313695"))
+
+# Replacement categories KS (annotation-based) versus ED (visual) scoring
+plotSurv(replacement_group_KS, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#fee090", "#fdae61", "#d73027"))
+plotSurv(replacement_group_ED, clinPatAnnotData.vis.withoutPredo, "OS", FALSE, col_palette = c("#fee090", "#fdae61", "#d73027"))
+
+```
+
+```{r}
+cite_packages()
+```
