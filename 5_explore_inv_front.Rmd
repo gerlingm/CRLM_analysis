@@ -320,3 +320,98 @@ if(is_detailed) {
   for(p in plots$plots) {print(p)}
 }
 ```
+
+### Show GP heterogeneity probe vs slide in desmoplastic and replacement fractions
+
+Get percentage of desmoplastic gp over slides and probes
+```{r }
+only_d_slide <- sorted_gp_slide %>% filter(annotation_types == "D") %>% mutate(slideNo = slide_name) %>% relocate(slideNo)
+```
+
+Get percentage of replacement gp over slides and probes, add to the desmo dataframe
+```{r }
+#copy % r per probe, and merge with the per slide dataframe
+only_r_probe <- sorted_gp_probe %>% filter(annotation_types == "R") %>% rename(percent_repl_probe = percent_gp) %>% rename(length_um_repl_probe = length_um) %>% select(c(-neoadjuvant, -percent_desmo_probe, -annotation_types))
+only_r_slide <- sorted_gp_slide %>% filter(annotation_types == "R") %>% rename(percent_repl_slide = percent_gp) %>% rename(length_um_repl_slide = length_um) %>% select(c(-neoadjuvant, -annotation_types, -percent_desmo_slide, -percent_desmo_tumor, -percent_desmo_probe, -tumor_name)) %>% rename(slideNo = slide_name)
+
+only_r_slide <- merge(only_r_slide, only_r_probe, by = 'ids', sort = FALSE) 
+only_r_slide <- only_r_slide %>% select(c(-ids))
+
+# merge desmo and replacement datasets
+df <- merge(only_d_slide, only_r_slide, by = 'slideNo', sort = FALSE, all = TRUE) %>% select(c(-neoadjuvant, -tumor_name, - slide_name, -annotation_types, -percent_gp, -percent_desmo_tumor))
+
+# Clean Up
+
+## Fill up NAs with "0" value
+df$length_um[is.na(df$length_um)] <- 0
+df$percent_desmo_slide[is.na(df$percent_desmo_slide)] <- 0
+df$percent_repl_slide[is.na(df$percent_repl_slide)] <- 0
+df$length_um_repl_slide[is.na(df$length_um_repl_slide)] <- 0
+df$ids <- str_split(df$slideNo, "\\-", simplify=T)[,1]
+percent_desmo_probe <- sorted_gp_probe %>% select(c(-annotation_types, -length_um, -percent_gp, -neoadjuvant))
+
+## Remove duplicated rows based on ids
+percent_desmo_probe <- percent_desmo_probe %>% distinct(ids, .keep_all = TRUE)
+df <- df %>% select(-percent_desmo_probe)
+df <- merge(df, percent_desmo_probe, by = 'ids', sort = FALSE)
+percent_repl_probe <- sorted_gp_probe %>% filter(annotation_types == "R") %>% rename(percent_repl_probe = percent_gp)
+percent_repl_probe <- percent_repl_probe %>% select(c(-length_um, -neoadjuvant, -annotation_types, -percent_desmo_probe))
+percent_repl_probe <- merge(percent_repl_probe, percent_desmo_probe, by = 'ids', all = TRUE, sort = FALSE)
+percent_repl_probe$percent_repl_probe[is.na(percent_repl_probe$percent_repl_probe)] <- 0
+df <- df %>% select(c(-percent_repl_probe, -percent_desmo_probe))
+df <- merge(df, percent_repl_probe, by = 'ids', all = TRUE, sort = FALSE)
+
+df <- df %>% select(-length_um_repl_probe)
+length_um_repl_probe <- gp_probe %>% filter(annotation_types == "R") %>% select(c(-percent_desmo_probe, -neoadjuvant, -percent_gp, -annotation_types)) %>% rename(length_um_repl_probe = length_um)
+df <- merge(df, length_um_repl_probe, by = 'ids', all = TRUE, sort = FALSE)
+df$length_um_repl_probe[df$percent_repl_probe == 0] <- 0
+
+NoSlides <- data.frame(table(df$ids)) %>% rename(ids = Var1) %>% rename(slideFreq = Freq)
+
+df <- merge(df, NoSlides, by = 'ids', sort = FALSE, all = TRUE)  %>% mutate(barWidth = 1/slideFreq)
+
+df <- df %>% rename(length_um_desmo_slide = length_um)
+
+df <- arrange(df, percent_desmo_probe)
+
+df <- df %>%                            
+  group_by(ids) %>%
+  dplyr::mutate(cs_barWidth = cumsum(barWidth)) 
+
+# produce a column with the ordered ids
+ids.ordered <- factor(df$ids, levels = unique(df$ids))
+df.order <- data.frame(ids.ordered) %>% distinct() %>% rename(ids = ids.ordered)
+df.order$order <- 1:(nrow(df.order))*1.5
+df <- merge(df, df.order, by = 'ids', all = TRUE) 
+df <- df %>% relocate(order)
+```
+
+# Build the bar plots
+```{r }
+# define the left and right border of the bar plots with help of the ordered ids 
+df <- df %>%
+  mutate(barPos.max = cs_barWidth + order) %>%
+  mutate(barPos.min = barPos.max - barWidth)
+
+#Plot distributions 
+
+## for desmoplastic GP
+ggplot(df, aes(x = order + 0.5, y = percent_desmo_probe)) + 
+    geom_rect(aes(xmin = barPos.min, xmax = barPos.max, ymax = percent_desmo_probe, ymin = 0-percent_desmo_slide, fill = "#313695"), colour = NA) +
+    geom_hline(aes(yintercept = 0))+
+    xlab("order id names") + 
+    ylab("percent Desmo") +
+    theme_minimal() +
+    theme(legend.position="none") +
+    scale_fill_manual(values = "#313695") 
+
+## for replacement GP
+ggplot(df, aes(x = order + 0.5, y = percent_repl_probe)) + 
+    geom_rect(aes(xmin = barPos.min, xmax = barPos.max, ymax = percent_repl_probe, ymin = 0-percent_repl_slide, fill = "#a50026"), colour = NA) +
+    geom_hline(aes(yintercept = 0))+
+    xlab("order id names") + 
+    ylab("percent Repl") +
+    theme_minimal() +
+    theme(legend.position="none") +
+    scale_fill_manual(values = "#a50026") 
+```
