@@ -1,0 +1,130 @@
+---
+title: "ClinicalDataTable"
+author: "Natalie Geyer"
+date: '`r Sys.Date()`'
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Import packages
+```{r, warning=FALSE, message=FALSE, include=FALSE}
+library(rtables)
+library(finalfit)
+library(gtsummary)
+library(tibble)
+library(knitr)
+library(report)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+## Clinical Data Summary Table
+
+### Set-Up
+```{r, echo=TRUE, include=FALSE}
+# Import directory for entire dataframe (sorted by Probe)
+clinPatAnnotFn <- "./output/clin_data_annot.csv"
+```
+
+Load clinical and pathological data
+```{r, echo=TRUE}
+# Load data
+clinPatAnnotData <- read.csv(clinPatAnnotFn)
+
+# Rename sex
+clinPatAnnotData_l <- clinPatAnnotData %>% 
+  mutate(sex = recode(sex, m = "male")) %>% 
+  mutate(sex = recode(sex, f = "female")) 
+
+# Clean-Up 
+clinPatAnnotData_l$pt_resection <- as.character(clinPatAnnotData_l$pt_resection)
+clinPatAnnotData_l$nodal_stage <- as.factor(clinPatAnnotData_l$nodal_stage)
+clinPatAnnotData_l$tumor_stage <- as.factor(clinPatAnnotData_l$tumor_stage)
+clinPatAnnotData_l$charlson_index_group <- as.factor(clinPatAnnotData_l$charlson_index_group)
+clinPatAnnotData_l$charlson_index_group <- fct_relevel(clinPatAnnotData_l$charlson_index_group, "6-8", "9", "10-14") 
+```
+
+### Data inclusion
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Select factors to include
+clinPatAnnotData_l_tbl <- clinPatAnnotData_l %>% 
+  select(sex, 
+         age,
+         neoadjuvant,
+         asa_score,
+         who_status, 
+         charlson_index_group,
+         primary_side, 
+         tumor_stage, 
+         nodal_stage,
+         pt_resection,
+         pt_radical_resection,
+         sync_meta, 
+         num_tumors_, 
+         num_tumors,
+         max_tum_diameter,
+         marginal1, 
+         sum_diameter, 
+         tum_percent_annot, 
+         kras_status,
+         msi_status,
+         braf_status,
+         ) 
+table1 <- tbl_summary(clinPatAnnotData_l_tbl)
+```
+
+### Build the table 
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Rename included factors 
+clinPatAnnotData_l_tbl <- clinPatAnnotData_l_tbl %>%
+    mutate(sex = ff_label(sex, "Sex"),
+        age = ff_label(age, "Age"),
+        neoadjuvant = ff_label(neoadjuvant, "Neoadjuvant chemotherapy"),
+        asa_score = ff_label(asa_score, "ASA classification"),
+        who_status = ff_label(who_status, "WHO performance status"), 
+        charlson_index_group = ff_label(charlson_index_group, "Charlson comorbidity index"),
+        primary_side = ff_label(primary_side, "Location of primary colon and rectal cancer"), 
+        tumor_stage = ff_label(tumor_stage, "Tumor stage"),
+        nodal_stage = ff_label(nodal_stage, "Nodal stage"), 
+        pt_resection = ff_label(pt_resection, "Resection of primary tumour"),
+        pt_radical_resection = ff_label(pt_radical_resection, "Radical resection of primary tumor"), 
+        sync_meta = ff_label(sync_meta, "Time of liver metastasis detection"), 
+        num_tumors_ = ff_label(num_tumors_, "Number of liver metastases"), # is that correct? OBS!
+        num_tumors = ff_label(num_tumors, "Mean number of liver metastases"), # is that correct? OBS!
+        max_tum_diameter = ff_label(max_tum_diameter, "Maximal diameter of metastasis"), # is that correct? OBS!
+        marginal1 = ff_label(marginal1, "Resection margin"), # is that correct? OBS!
+        sum_diameter = ff_label(sum_diameter, "Sum of all tumor diameters"), # is that correct? OBS! 
+        tum_percent_annot = ff_label(tum_percent_annot, "Regression [%]"), # is that correct? OBS!
+        kras_status = ff_label(kras_status, "Cases with KRAS mutation"), # is that correct? OBS!
+        msi_status = ff_label(msi_status, "Cases with Microsatellite Instability"), # is that correct? OBS!
+        braf_status = ff_label(braf_status, "Cases with BRAF mutation"), # is that correct? OBS!
+    ) 
+
+# Build summary table
+table_gt_summary <- 
+  tbl_summary(clinPatAnnotData_l_tbl) %>% 
+  add_ci() %>%
+  bold_labels()
+  
+# Build grouped table, by neoadjuvant treatment
+table_gt_summary_grouped <- 
+  tbl_summary(clinPatAnnotData_l_tbl, by = neoadjuvant) %>% 
+  add_p() %>%
+  add_n() %>%
+  modify_header(label ~ "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Neoadjuvant chemotherapy**") %>%
+  bold_labels()
+  #%>% add_ci() 
+table_gt_summary
+table_gt_summary_grouped
+```
+
+## Report packages
+```{r}
+cite_packages()
+```
