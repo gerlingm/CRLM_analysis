@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<annotations>
+    <ndpviewstate id="1">
+        <title>35%</title>
+        <details></details>
+        <coordformat>nanometers</coordformat>
+        <lens>1,891584</lens>
+        <x>7683446</x>
+        <y>-5654323</y>
+        <z>0</z>
+        <showtitle>0</showtitle>
+        <showhistogram>0</showhistogram>
+        <showlineprofile>0</showlineprofile>
+        <annotation type="pointer" displayname="AnnotatePointer" color="#00ff00">
+            <x1>7533160</x1>
+            <y1>-4735936</y1>
+            <x2>7874074</x2>
+            <y2>-4107598</y2>
+        </annotation>
+    </ndpviewstate>
+</annotations>
