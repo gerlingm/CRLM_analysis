@@ -11,6 +11,10 @@ if(is_test) {
   ndpa_dir <- "./input/annotations_220421/"  
 }
 
+dir.create("output")
+dir.create("./output/parsed_annotations")
+file.create("./output/parsed_annotations/errors.txt")
+
 out_dir <- "./output"
 
 # Parse annotation XML files and build an initial df of form: ids-tumors-blocks-annotation_type-annotation_value
