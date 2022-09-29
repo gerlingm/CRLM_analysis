@@ -44,9 +44,9 @@ Import data
 # [6] "location of primary (left/right)"     "date of liver op"                     "date of death"                        "Cancer Related Death (Y/N/, unclear)" "date of progression/recidive"        
 #[11] "date of progression in liver"         "neoadjvant (Y/N)"                     "sync/meta (s/m)"                      "lost for follow up"                   "comment"   
 
-# Read excel file
-clinData <- read_excel(clinDataFn, col_types = c("skip", "skip", "text", "date", "text", "text", "date", "date", "text",  "date", "date", "text", "text", "date", "skip"))
-clinData2 <- read_excel(clinDataFn2, col_types = c("numeric", "text", "numeric", "numeric", "numeric", "text", "text", "numeric", "text", "numeric", "numeric", "numeric", "text"))
+# Read csv files
+clinData <- read_csv2(clinDataFn, col_types = c("_", "_", "text", "date", "text", "text", "date", "date", "text", "date", "date", "text", "text", "date", "_"))
+clinData2 <- read_csv2(clinDataFn2, col_types = c("n", "text", "n", "n", "n", "text", "text", "n", "text", "n", "n", "n", "text"))
 
 # Rename columns with easy and concise names: rename(flights, tail_num = tailnum)
 (nms <- names(clinData))
