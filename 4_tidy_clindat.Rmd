@@ -63,6 +63,7 @@ clinData <- rename(clinData, date_birth = "dob",
                    sync_meta = "sync/meta (s/m)",
                    date_lost_follow_up = "date of lost for follow up")
 
+
 clinData2 <- rename(clinData2,  
                    asa_score = "ASA (9=not available)",
                    who_status = "WHO performance status (9=not available)", 
@@ -191,7 +192,7 @@ clinData2$charlson_index_group <- fct_relevel(clinData2$charlson_index_group, "6
 # Generate derived columns: time_follow_up, status_follow_up (1 - death observed, 0 - survival time censored) for survival 
 fuDeath <- clinData %>% filter(!is.na(date_death)) %>% mutate(time_fu_os = as.double(difftime(date_death, date_liver_op, units = c("days"))), status_fu_os = 1)
 fuAlive <- clinData %>% filter(is.na(date_death) & is.na(date_lost_follow_up)) %>% mutate(time_fu_os = as.double(difftime(dateEndFu, date_liver_op, units = c("days"))), status_fu_os = 0)
-fuLostOS <- clinData %>% filter(!is.na(date_lost_follow_up) & is.na(date_death)) %>% mutate(time_fu_os = as.double(difftime(date_lost_follow_up, date_liver_op, units = c("days"))), status_fu_os = 0)
+fuLostOS <- clinData %>% filter(!is.na(date_lost_follow_up) & is.na(date_death)) %>% mutate(time_fu_os = as.double(difftime(date_lost_follow_up, date_liver_op, units = c("days"))), status_fu_os = 0) 
 clinSurvDataOS <- rbind(fuDeath, fuAlive, fuLostOS)
 stopifnot(all_equal(clinData, select(clinSurvDataOS, -time_fu_os, -status_fu_os)))
 
@@ -224,24 +225,26 @@ clinSurvData <- clinSurvData %>% relocate(age_group, .after = age)
 Merge clinical with pathology report data
 ```{r}
 # Check column names in CRLM_KS_cohort_pathology
-(nms <- names(read_excel(patDataFn1, n_max = 0)))
-(nms <- names(read_excel(patDataFn2, n_max = 0)))
+(nms <- names(read_csv2(patDataFn1, n_max = 0)))
+# Possible import of a second pathological report dataset 
+#(nms <- names(read_excel(patDataFn2, n_max = 0)))
 
 # Import pathology datasets
-patDataOrig1 <- read_excel(patDataFn1, col_types = c(
-  "skip", "numeric", "text", "numeric", "text",  rep("skip", 8),
-  rep(c("numeric", "skip", "numeric", "numeric"), 16)
+patDataOrig1 <- read_csv2(patDataFn1, col_types = c(
+  "_", "n", "text", "n", "text",  rep("_", 8),
+  rep(c("n", "_", "n", "n"), 16)
   ))
-patDataOrig2 <- read_excel(patDataFn2, col_types = c(
-  "skip", "numeric", "text", "numeric", "text",  rep("skip", 8),
-  rep(c("numeric", "skip", "numeric", "numeric"), 16)
-  ))
+#patDataOrig2 <- read_csv2(patDataFn2, col_types = c(
+#  "_", "n", "text", "n", "text",  rep("skip", 8),
+#  rep(c("n", "_", "n", "n"), 16)
+#  ))
 
-# Merge pathology datasets
-patDataOrig <- rbind(patDataOrig1, patDataOrig2)
+# Merge pathology datasets if two seperate ones were imported
+#patDataOrig <- rbind(patDataOrig1, patDataOrig2)
+patDataOrig <- patDataOrig1
 
 patDataTemp <-patDataOrig
-tumor_letters <- c('a' , 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p')
+tumor_letters <- c('a' , 'b', 'c')
 for (a_letter in tumor_letters) {
   percent_tumor_col_name <- str_glue('tumor_{a_letter}_percent_tumor (%)')
   percent_tumor_orig_col_name <- str_glue('tumor_{a_letter}_percent_tumor_orig (%)')
@@ -354,12 +357,13 @@ patData <- patData %>% relocate(sum_tumour_score_report_group, .after = sum_tumo
 clinPatData <- merge(clinSurvData, patData, by = "pad")
 clinPatData <- merge(clinPatData, clinData2, by = "pad")
 
+
 ```
 
 Read and process annotation derived GP data
 ```{r }
 gpProbeOrig <- read.csv(gpProbeFn, row.names=NULL)
-gpProbeOrig$annotation_types <- fct_relevel(gpProbeOrig$annotation_types, "P", "D", "R")
+gpProbeOrig$annotation_types <- fct_relevel(gpProbeOrig$annotation_types, "P", "D","R")
 
 # Rename columns
 gpProbeOrig <- gpProbeOrig %>% rename(id = ids)
@@ -427,8 +431,6 @@ clinPatData <- clinPatData %>% relocate(id, .after = pad)
 clinPatAnnotationData <- merge(clinPatData, gpProbeReplacement, by = "id", all.x = TRUE)
 clinPatAnnotationData <- merge(clinPatAnnotationData, tumorPercentProbe, by = "id", all.x = TRUE)
 clinPatAnnotationData <- merge(clinPatAnnotationData, gpProbeDesmo, by = "id", all.x = TRUE)
-clinPatAnnotationData <- merge(clinPatAnnotationData, gpRepl2PercentR2Trim, by = "id", all.x = TRUE)
-clinPatAnnotationData <- merge(clinPatAnnotationData, gpPredominant4, by = "id", all.x = TRUE)
 clinPatAnnotationData <- merge(clinPatAnnotationData, gpPredominant3, by = "id", all.x = TRUE)
 ```
 
@@ -516,7 +518,7 @@ for(an_id in unique(gpByTumor$ids)) {
 }
 
 # Derive % replacement per probe
-replacementByTumor <- gpByTumor %>% group_by(ids, tumors) %>% filter(annotation_types == "R" | annotation_types == "R2") %>% summarise(replacement_percent = sum(percent_gp) )
+replacementByTumor <- gpByTumor %>% group_by(ids, tumors) %>% filter(annotation_types == "R") %>% summarise(replacement_percent = sum(percent_gp) )
 replacementByTumorWide <- replacementByTumor %>% pivot_wider(names_from = tumors, values_from = replacement_percent, names_prefix = "replacement_tum_ann_")
 
 replacementByTumorWide <- replacementByTumorWide %>% rename(id = "ids")
@@ -585,19 +587,10 @@ Final cleanup
 ```{r }
 # Optimal cutpoints using maximally selected rank statistics
 # OS
-if(is_visual_scores) {
 surv_cutpoint(clinPatAnnotationData, time = "time_fu_os", event = "status_fu_os", variables = c("age", "num_tumors", "max_diameter", "sum_diameter", "marginal", "mean_tumor_percent_report", "sum_tumour_score_report", "replacement_percent", "desmo_percent", "tum_percent_annot", "sum_tumour_score_annot", "sum_replacement_score_annot"), progressbar = FALSE) 
-} else {
-  surv_cutpoint(clinPatAnnotationData, time = "time_fu_os", event = "status_fu_os", variables = c("age", "num_tumors", "max_diameter", "sum_diameter", "marginal", "mean_tumor_percent_report", "sum_tumour_score_report", "replacement_percent", "desmo_percent", "percent_r2", "tum_percent_annot", "sum_tumour_score_annot", "sum_replacement_score_annot"), progressbar = FALSE) 
-}
 
 # DFS
-if(is_visual_scores) {
-  surv_cutpoint(clinPatAnnotationData, time = "time_fu_prog", event = "status_fu_prog", variables = c("age", "num_tumors", "max_diameter", "sum_diameter", "marginal", "mean_tumor_percent_report", "sum_tumour_score_report", "replacement_percent", "desmo_percent", "tum_percent_annot", "sum_tumour_score_annot", "sum_replacement_score_annot"), progressbar = FALSE)
-} else {
-surv_cutpoint(clinPatAnnotationData, time = "time_fu_prog", event = "status_fu_prog", variables = c("age", "num_tumors", "max_diameter", "sum_diameter", "marginal", "mean_tumor_percent_report", "sum_tumour_score_report", "replacement_percent", "desmo_percent", "percent_r2", "tum_percent_annot", "sum_tumour_score_annot", "sum_replacement_score_annot"), progressbar = FALSE)  
-}
-
+surv_cutpoint(clinPatAnnotationData, time = "time_fu_prog", event = "status_fu_prog", variables = c("age", "num_tumors", "max_diameter", "sum_diameter", "marginal", "mean_tumor_percent_report", "sum_tumour_score_report", "replacement_percent", "desmo_percent", "tum_percent_annot", "sum_tumour_score_annot", "sum_replacement_score_annot"), progressbar = FALSE)  
 
 clinPatAnnotationData <- clinPatAnnotationData %>% rename(age_ = age_group)
 clinPatAnnotationData <- clinPatAnnotationData %>% rename(num_tumors_ = num_tumors_group)
