@@ -27,7 +27,7 @@ gp_probe_fn <- paste(base_dir, "/gp_annotations_by_probe.csv", sep="")
 
 clinPatAnnotFn <- paste(base_dir, "/clin_data_annot.csv", sep="")
 
-is_r1_2 = FALSE # TRUE # Wether replacement should be split into type 1 and 2 categories
+is_r1_2 = FALSE # TRUE # Whether replacement should be split into type 1 and 2 categories
 is_detailed = FALSE # TRUE For plotting separately every tumor and probe
 
 annot_types <- c()
@@ -147,11 +147,6 @@ print(eff_size)
 gp_probe <- read.csv(gp_probe_fn, row.names=NULL)
 gp_probe$ids <- as.factor(gp_probe$ids)
 
-if(!is_r1_2) {
-  # Merge r1 and 2
-  gp_probe$annotation_types <- gsub("R2", "R", gp_probe$annotation_types, fixed = TRUE)
-  gp_probe <- gp_probe %>% group_by(ids, annotation_types) %>% summarise(length_um = sum(length_um), percent_gp = sum(percent_gp))
-}
 gp_probe$annotation_types <- as.factor(gp_probe$annotation_types)
 gp_probe <- gp_probe %>% mutate(annotation_types = fct_relevel(annotation_types, annot_types)) %>% ungroup()
 
