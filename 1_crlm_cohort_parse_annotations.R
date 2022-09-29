@@ -8,7 +8,7 @@ is_test = FALSE # TRUE #
 if(is_test) {
   ndpa_dir <- "./annotations_tests/annotations/"  
 } else {
-  ndpa_dir <- "./input/annotations_220421/"  
+  ndpa_dir <- "./input/annotations/"  
 }
 
 dir.create("output")
