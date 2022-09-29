@@ -331,7 +331,7 @@ patData <- patData %>% relocate(sum_diameter_group, .after = sum_diameter)
 
 # Dichotomize marginal with 0 and 1 mm as cut-offs
 table(patData$marginal)
-hist(patData$marginal, freq = TRUE, breaks = c(0, 1, 5, seq(10, max(patData$marginal, na.rm = TRUE), by = 10)))
+hist(patData$marginal, freq = TRUE, breaks = 25)
 patData <- patData %>% mutate(marginal_group0 = ifelse(marginal > 0, ">0", "0"))
 patData <- patData %>% relocate(marginal_group0, .after = marginal)
 
@@ -343,7 +343,7 @@ patData <- patData %>% relocate(marginal_group01, .after = marginal_group1)
 
 # Dichotomize mean tumor percent
 table(patData$mean_tumor_percent_report)
-hist(patData$mean_tumor_percent_report, freq = TRUE, breaks = c(0, 5, seq(10, 100, by = 10)))
+hist(patData$mean_tumor_percent_report, freq = TRUE, breaks = 20)
 patData <- patData %>% mutate(tum_percent_report_group = ifelse(mean_tumor_percent_report < 50, "<50", "50+"))
 patData <- patData %>% relocate(tum_percent_report_group, .after = mean_tumor_percent_report)
 
