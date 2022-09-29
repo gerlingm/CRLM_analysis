@@ -354,7 +354,6 @@ patData <- patData %>% relocate(sum_tumour_score_report_group, .after = sum_tumo
 clinPatData <- merge(clinSurvData, patData, by = "pad")
 clinPatData <- merge(clinPatData, clinData2, by = "pad")
 
-}
 ```
 
 Read and process annotation derived GP data
