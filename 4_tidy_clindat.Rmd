@@ -359,14 +359,14 @@ clinPatData <- merge(clinPatData, clinData2, by = "pad")
 Read and process annotation derived GP data
 ```{r }
 gpProbeOrig <- read.csv(gpProbeFn, row.names=NULL)
-gpProbeOrig$annotation_types <- fct_relevel(gpProbeOrig$annotation_types, "P", "D","R2", "R")
+gpProbeOrig$annotation_types <- fct_relevel(gpProbeOrig$annotation_types, "P", "D", "R")
 
 # Rename columns
 gpProbeOrig <- gpProbeOrig %>% rename(id = ids)
 
 # Classify each probe accordibng to predominant GP (3 categories)
 gPredoDesmoPushing <- gpProbeOrig %>% filter(annotation_types %in% c("D", "P")) %>% select(-length_um)
-gPredoRepl12 <- gpProbeOrig %>% filter(annotation_types %in% c("R", "R2"))
+gPredoRepl12 <- gpProbeOrig %>% filter(annotation_types %in% c("R"))
 gPredoRepl <- gPredoRepl12 %>% group_by(id) %>% summarise(annotation_types = "R", percent_gp = sum(percent_gp))
 
 gpPredominant3 <- rbind(gPredoDesmoPushing, gPredoRepl) %>% group_by(id) %>% slice_max(percent_gp) %>% select(id, annotation_types)
@@ -377,21 +377,17 @@ gpPredominant3 <- gpPredominant3 %>% filter(!(id %in% fifty_fifty))
 # Initialize % of replacement and desmoplastic for every tumor, so those with 0 % are captured when filtering
 for(an_id in unique(gpProbeOrig$id)) {
   gpProbeOrig <- gpProbeOrig %>% add_row(id = an_id, annotation_types = "R", length_um = 0, percent_gp = 0)
-  gpProbeOrig <- gpProbeOrig %>% add_row(id = an_id, annotation_types = "R2", length_um = 0, percent_gp = 0)
   gpProbeOrig <- gpProbeOrig %>% add_row(id = an_id, annotation_types = "D", length_um = 0, percent_gp = 0)
 }
 
 # Derive % replacement and desmo per probe
-gpProbeReplacement <- gpProbeOrig %>% group_by(id) %>% filter(annotation_types == "R" | annotation_types == "R2") %>% summarise(replacement_percent = sum(percent_gp) )
+gpProbeReplacement <- gpProbeOrig %>% group_by(id) %>% filter(annotation_types == "R") %>% summarise(replacement_percent = sum(percent_gp) )
 gpProbeDesmo <- gpProbeOrig %>% group_by(id) %>% filter(annotation_types == "D") %>% summarise(desmo_percent = sum(percent_gp) )
 
 # Derive % replacement 1 vs 2
-gpProbeRepl12 <- gpProbeOrig %>% filter(annotation_types == "R" | annotation_types == "R2") %>% group_by(id, annotation_types) %>% summarise(sum_percent_gp = sum(percent_gp))
+gpProbeRepl12 <- gpProbeOrig %>% filter(annotation_types == "R") %>% group_by(id, annotation_types) %>% summarise(sum_percent_gp = sum(percent_gp))
 gpProbeRepl12No0 <- gpProbeRepl12 %>% group_by(id) %>% filter(sum(sum_percent_gp) > 0)
 gpProbeRepl12Percent <- gpProbeRepl12No0 %>% group_by(id) %>% mutate(percent_repl = 100 / sum(sum_percent_gp) * sum_percent_gp)
-gpRepl2PercentR2 <- gpProbeRepl12Percent %>% filter(annotation_types == "R2")
-gpRepl2PercentR2Trim <- gpRepl2PercentR2 %>% select(id, percent_repl)
-gpRepl2PercentR2Trim <- gpRepl2PercentR2Trim %>% rename(percent_r2 = percent_repl)
 
 # Dichotomize % replacement
 table(gpProbeReplacement$replacement_percent)
@@ -408,11 +404,6 @@ gpProbeDesmo <- gpProbeDesmo %>% mutate(desmo_group10050 = ifelse(desmo_percent 
 gpProbeDesmo <- gpProbeDesmo %>% mutate(desmo_galjart = cut(gpProbeDesmo$desmo_percent, breaks = c(0, 0.1, 33, 66, 99.9, 100), include.lowest = TRUE))
 gpProbeDesmo <- gpProbeDesmo %>% mutate(desmo_ks = cut(gpProbeDesmo$desmo_percent, breaks = c(0, 33, 99.9, 100), include.lowest = TRUE))
 gpProbeDesmo <- gpProbeDesmo %>% mutate(desmo_ks2 = cut(gpProbeDesmo$desmo_percent, breaks = c(0, 33, 95, 100), include.lowest = TRUE))
-
-# Dichotomize % replacement2
-table(gpRepl2PercentR2Trim$percent_r2)
-hist(gpRepl2PercentR2Trim$percent_r2)
-gpRepl2PercentR2Trim <- gpRepl2PercentR2Trim %>% mutate(r2_group = ifelse(percent_r2 >=50, "50+", "<50"))
 ```
 
 Read and process annotation derived regression data
