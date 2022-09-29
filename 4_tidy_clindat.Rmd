@@ -22,10 +22,9 @@ library(naniar)
 ```
 
 ```{r}
-clinDataFn <- "./input/datasets/CRLM_clinData.xlsx"
-clinDataFn2 <- "./input/datasets/CRLM_clinData2.xlsx"
-patDataFn1 <- "./input/datasets/CRLM_pathData.xlsx"
-patDataFn2 <- "./input/datasets/CRLM_pathData2.xlsx"
+clinDataFn <- "./input/CRLM_clinical_example.csv"
+clinDataFn2 <- "./input/CRLM_clinical2_example.csv"
+patDataFn1 <- "./input/CRLM_pathology_example.csv"
 
 gpProbeFn <- "./output/gp_annotations_by_probe.csv"
 tumorPercentProbeFn <- "./output/regression_by_probe.csv"
