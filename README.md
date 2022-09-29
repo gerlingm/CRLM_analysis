@@ -9,4 +9,4 @@ Invasion front annotations are exported as .ndpa files into the folder "./input/
 
 3_ tidies the annotations into growth pattern annotations per probe/slide/tumor and tumor regression per probe/slide/tumor and saves them in "./output/"
 
-4_ imports two clinical dataframes from .csv files, reorganizes the data, calculates the age of the patients, plots an age histogram, merges the clinical with pathological report data
+4_ imports two clinical dataframes from .csv files, reorganizes the data, calculates the age of the patients, plots an age histogram, merges the clinical with pathological report data, calculates tumor regression, calculates tumor diameter sums, imports growth pattern annotation, reorganizes and categorizes growth pattern annotations
