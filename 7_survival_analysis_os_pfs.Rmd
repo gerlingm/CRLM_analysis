@@ -115,6 +115,7 @@ plotSurv(gp_predo3, filter(clinPatAnnotData, neoadjuvant == "No"), "Liver PFS", 
 
 Multivariate analysis (CCox proportional hazards model)
 ```{r, fig.width= 10}
+
 # Fit a Cox proportional hazards model
 # Alternatively, build model with continuous data instead of discretized
 
@@ -124,8 +125,14 @@ summary(fit.coxph)
 ggforest(fit.coxph, data = clinPatAnnotData, main = "UNI - OS All - desmo_ks")
 
 # MULTI - OS desmo_ks
-fit.coxph <- coxph(Surv(time = time_fu_os, event = status_fu_os) ~ age_ + primary_side + num_tumors_ + max_tum_diameter + marginal1 +
-                    tum_percent_annot_ + desmo_ks, data = clinPatAnnotData)
+fit.coxph <- coxph(Surv(time = time_fu_os, event = status_fu_os) ~ age_ + 
+                     primary_side + 
+                     num_tumors + 
+                     max_tum_diameter + 
+                     marginal +
+                     tum_percent_annot_ + 
+                     desmo_ks, 
+                   data = clinPatAnnotData)
 summary(fit.coxph)
 ggforest(fit.coxph, data = clinPatAnnotData, main = "OS All - desmo_ks")
 
@@ -135,8 +142,12 @@ summary(fit.coxph)
 ggforest(fit.coxph, data = clinPatAnnotData, main = "UNI - Liver PFS All - desmo_ks")
 
 # MULTI - Liver PFS desmo_ks
-fit.coxph <- coxph(Surv(time = time_fu_prog, event = status_fu_prog) ~ primary_side + sync_meta + num_tumors_ + max_tum_diameter + marginal1 +
-                    desmo_ks, data = clinPatAnnotData)
+fit.coxph <- coxph(Surv(time = time_fu_prog, event = status_fu_prog) ~ primary_side + 
+                     sync_meta + 
+                     num_tumors + 
+                     max_tum_diameter + 
+                     marginal + 
+                     desmo_ks, data = clinPatAnnotData)
 summary(fit.coxph)
 ggforest(fit.coxph, data = clinPatAnnotData, main = "Liver PFS All - desmo_ks")
 ```
