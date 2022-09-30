@@ -82,10 +82,10 @@ bxp <- ggboxplot(
   color = "neoadjuvant", palette = "jco"
   )
 # Add statistical test p-values
-stat.test1 <- stat.test %>% add_xy_position(x = "")
-p <- bxp + stat_pvalue_manual(label = "p={round(p.adj,3)} {p.adj.signif}",
-  stat.test1, tip.length = 0) 
-print(p)
+#stat.test1 <- stat.test %>% add_xy_position(x = "")
+#p <- bxp + stat_pvalue_manual(label = "p={round(p.adj,3)} {p.adj.signif}",
+#  stat.test1, tip.length = 0) 
+#print(p)
 
 # Effect sizes
 eff_size <- regression_data %>%
