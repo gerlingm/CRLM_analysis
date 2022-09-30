@@ -13,5 +13,14 @@ The pipeline is divided in several parts, whose function can be summarized as fo
 
 4_ imports two clinical dataframes from .csv files, reorganizes the data, calculates the age of the patients, plots an age histogram, merges the clinical with pathological report data, calculates tumor regression, calculates tumor diameter sums, imports growth pattern annotation, reorganizes and categorizes growth pattern annotations
 
+5_ explores growth pattern abundance in the CRLM dataset, (i) per probe, (ii) per tumor, (iii) per slide in all patients and grouped for chemonaive versus neoadjuvant chemotherapy
 
-To further show the functionality of the pipeline, parts of it are provided as html rendered files generated from the of R markdown codes.
+6_ explores the degree of tumor regression in the CRLM dataset
+
+7_ explores the overall and liver progression-free survival in the CRLM dataset, depending on various factors, and performs  uni- as well as multivariate analyses
+
+9_ builds a clinical data table with (i) all patients combined (ii) patients grouped for chemonaive and neoadjuvant chemotherapy 
+
+10_ correlates the degree of desmoplastic growth with tumor regression per probe with (i) all patients combined (ii) patients grouped for chemonaive and neoadjuvant chemotherapy 
+
+To further show the functionality of the pipeline 4_, 5_, 6_, 7_, 9_, 10_ are provided as html rendered R markdown files.
